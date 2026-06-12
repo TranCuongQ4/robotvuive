@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Robot AI Đa Năng - Trần Cường Design</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <!-- Lottie Player - Hoạt hình robot đẹp -->
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@2.0.0/dist/lottie-player.js"></script>
+</head>
+<body>
+    <div class="led-border"></div>
+    
+    <div class="container">
+        <!-- Header robot - DÙNG LOTTIE HOẠT HÌNH -->
+        <div class="robot-header">
+            <div class="robot-card">
+                <div class="robot-3d">
+                    <!-- Lottie hoạt hình robot -->
+                    <div class="lottie-container">
+                        <lottie-player id="robotLottie"
+                            src="Futuristic Robot Constructor.json"
+                            background="transparent"
+                            speed="1"
+                            style="width: 200px; height: 200px; margin: 0 auto;"
+                            loop
+                            autoplay>
+                        </lottie-player>
+                        <!-- Lớp phủ miệng cho hiệu ứng nhép khi nói -->
+                        <div class="mouth-effect-lottie" id="mouthEffectLottie"></div>
+                    </div>
+                </div>
+                <h1 class="robot-title">Robot Vui Vẻ</h1>
+                <p class="robot-sub">✧❁❁✧✿✿✧❁❁✧</p>
+            </div>
+        </div>
+
+        <!-- Khung chat input -->
+        <div class="chat-input-area">
+            <button class="mic-btn" id="micBtn"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12,16A3,3 0 0,0 15,13V5A3,3 0 0,0 12,2A3,3 0 0,0 9,5V13A3,3 0 0,0 12,16M17,13C17,15.76 14.76,18 12,18C9.24,18 7,15.76 7,13H5C5,16.53 7.61,19.43 11,19.92V22H13V19.92C16.39,19.43 19,16.53 19,13H17Z"/></svg></button>
+            <input type="text" id="chatInput" placeholder="Gõ chữ nói chuyện nè...!" class="chat-input">
+            <button class="send-btn" id="sendBtn"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M2,21L23,12L2,3V10L17,12L2,14V21Z"/></svg></button>
+        </div>
+        
+        <!-- DÒNG NÚT DỊCH THUẬT -->
+        <div class="translate-buttons">
+            <button class="translate-btn" id="translateEnToViBtn" aria-label="Dịch Anh sang Việt">
+                <span>🇬🇧 Anh → 🇻🇳 Việt</span>
+                <small>Nhấn giữ để nói tiếng Anh, buông để dịch sang Việt và đọc</small>
+            </button>
+            <button class="translate-btn" id="translateViToEnBtn" aria-label="Dịch Việt sang Anh">
+                <span>🇻🇳 Việt → 🇬🇧 Anh</span>
+                <small>Nhấn giữ để nói tiếng Việt, buông để dịch sang Anh và đọc</small>
+            </button>
+        </div>
+
+        <!-- Khu vực hiển thị YouTube Player -->
+        <div id="youtubePlayerContainer" class="youtube-player-container" style="display: none;">
+            <div class="player-header">
+                <span id="nowPlayingTitle">🎵 Đang phát</span>
+                <button id="closePlayerBtn" class="close-player">✕</button>
+            </div>
+            <div id="youtubePlayer"></div>
+            <div class="player-controls">
+                <button id="playPauseBtn" class="control-btn">⏸️ Tạm dừng</button>
+                <button id="stopMusicBtn" class="control-btn">⏹️ Dừng</button>
+            </div>
+        </div>
+
+        <!-- Bảng chat hiển thị nội dung -->
+        <div class="chat-container" id="chatContainer">
+            <div class="welcome-message">🤖 Nói Gì Với Mình Nha . Rất Vui Gặp Bạn 🤖</div>
+        </div>
+        
+        <!-- Web View để hiển thị trang tìm kiếm -->
+        <div id="webviewContainer" class="webview-container" style="display: none;">
+            <div class="webview-header">
+                <span id="webviewTitle">🔍 Đang tìm kiếm...</span>
+                <button id="closeWebviewBtn" class="close-webview">✕</button>
+            </div>
+            <iframe id="webviewFrame" class="webview-frame"></iframe>
+        </div>
+    </div>
+
+    <footer class="footer">Thiết Kế Trần Cường - Zalo: 0907860662</footer>
+    <script src="script.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "@edge-tts/universal": "https://unpkg.com/edge-tts-universal@1.2.4/dist/browser.js"
+            }
+        }
+    </script>
+</body>
+</html>
