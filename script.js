@@ -336,7 +336,11 @@ async function copyToClipboard(text, btn) {
 }
 
 // ========== TEXT TO SPEECH ==========
+
+// ========== TEXT TO SPEECH VỚI FALLBACK ==========
+
 async function speakText(text) {
+    // Dừng audio đang phát
     if (currentAudio) {
         currentAudio.pause();
         currentAudio = null;
@@ -345,12 +349,32 @@ async function speakText(text) {
     isSpeaking = true;
     startTalkingAnimation();
     
+    // Làm sạch text (loại bỏ icon, khoảng trắng thừa)
+    let cleanText = text;
+    cleanText = cleanText.replace(/^[📝✅🔄🎤]\s*/, '');
+    cleanText = cleanText.replace(/^["']|["']$/g, '');
+    cleanText = cleanText.trim();
+    
+    if (!cleanText) {
+        stopTalkingAnimation();
+        return;
+    }
+    
+    // Thử dùng Web Speech API trước (ổn định hơn)
+    try {
+        await webSpeechFallback(cleanText);
+        return;
+    } catch (error) {
+        console.log("Web Speech API error, trying Edge TTS:", error);
+    }
+    
+    // Nếu Web Speech API lỗi, thử Edge TTS
     try {
         const { EdgeTTS } = await import('@edge-tts/universal');
-        const language = detectLanguage(text);
+        const language = detectLanguage(cleanText);
         let voice = language === 'vi' ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
         
-        const tts = new EdgeTTS(text, voice);
+        const tts = new EdgeTTS(cleanText, voice);
         const result = await tts.synthesize();
         const audioUrl = URL.createObjectURL(result.audio);
         currentAudio = new Audio(audioUrl);
@@ -362,31 +386,71 @@ async function speakText(text) {
             stopTalkingAnimation();
         };
         
-        currentAudio.onerror = () => {
-            console.error("Lỗi phát Edge TTS audio");
+        currentAudio.onerror = (e) => {
+            console.error("Edge TTS play error:", e);
             URL.revokeObjectURL(audioUrl);
             currentAudio = null;
-            fallbackSpeakText(text);
+            webSpeechFallback(cleanText);
         };
         
         currentAudio.play();
         
     } catch (error) {
         console.error("Edge TTS error:", error);
-        fallbackSpeakText(text);
+        webSpeechFallback(cleanText);
     }
 }
 
-function fallbackSpeakText(text) {
-    if (currentUtterance) speechSynthesis.cancel();
+// Hàm fallback dùng Web Speech API (giọng có sẵn trên máy)
+function webSpeechFallback(text) {
+    if (currentUtterance) {
+        speechSynthesis.cancel();
+    }
+    
     currentUtterance = new SpeechSynthesisUtterance(text);
     const voices = speechSynthesis.getVoices();
-    let selectedVoice = voices.find(voice => voice.name.toLowerCase() === 'microsoft an' || voice.lang === 'vi-VN');
-    if (!selectedVoice) selectedVoice = voices.find(voice => voice.name.includes('Google UK English Male'));
-    if (selectedVoice) currentUtterance.voice = selectedVoice;
-    currentUtterance.lang = detectLanguage(text);
+    let selectedVoice = null;
+    
+    // Ưu tiên giọng Microsoft An (tiếng Việt)
+    selectedVoice = voices.find(voice => 
+        voice.name.toLowerCase() === 'microsoft an' ||
+        (voice.name.toLowerCase().includes('an') && voice.lang === 'vi-VN') ||
+        voice.lang === 'vi-VN'
+    );
+    
+    // Nếu không có giọng Việt, dùng giọng Anh
+    if (!selectedVoice) {
+        selectedVoice = voices.find(voice => 
+            voice.name.includes('Google UK English Male') ||
+            voice.name.includes('Microsoft David') ||
+            voice.lang === 'en-US'
+        );
+    }
+    
+    if (selectedVoice) {
+        currentUtterance.voice = selectedVoice;
+        console.log("🎤 Dùng giọng Web Speech:", selectedVoice.name);
+    }
+    
+    const language = detectLanguage(text);
+    currentUtterance.lang = language === 'vi' ? 'vi-VN' : 'en-US';
     currentUtterance.rate = 0.95;
-    currentUtterance.onend = () => { currentUtterance = null; stopTalkingAnimation(); };
+    currentUtterance.pitch = 1.0;
+    currentUtterance.volume = 1;
+    
+    currentUtterance.onend = () => {
+        currentUtterance = null;
+        isSpeaking = false;
+        stopTalkingAnimation();
+    };
+    
+    currentUtterance.onerror = (e) => {
+        console.error("Web Speech error:", e);
+        currentUtterance = null;
+        isSpeaking = false;
+        stopTalkingAnimation();
+    };
+    
     speechSynthesis.speak(currentUtterance);
 }
 
