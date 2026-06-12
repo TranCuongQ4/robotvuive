@@ -1,5 +1,5 @@
 // Configuration
-const API_URL = 'https://solitary-glitter-6b93robotvuive.tranmanhcuonghappy.workers.dev/';
+const API_URL = 'https://solitary-glitter-6b93robotvuive.tranmanhcuonghappy.workers.dev';
 const MODEL = 'gpt-oss-120b';
 
 // DOM elements
@@ -184,8 +184,7 @@ async function sendMessage() {
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${CEREBRAS_API_KEY}`,
-                'Content-Type': 'application/json',
+                                'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 model: MODEL,
@@ -787,8 +786,7 @@ async function translateText(text, sourceLang, targetLang) {
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${CEREBRAS_API_KEY}`,
-                'Content-Type': 'application/json',
+                               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 model: MODEL,
