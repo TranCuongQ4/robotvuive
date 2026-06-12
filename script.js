@@ -51,6 +51,35 @@ const MUSIC_KEYWORDS = ['mở nhạc', 'play', 'bật nhạc', 'nghe bài', 'cho
 const STOP_KEYWORDS = ['tắt nhạc', 'dừng nhạc', 'stop music'];
 const SEARCH_KEYWORDS = ['giá xăng', 'xăng hôm nay', 'giá dầu', 'giá vàng', 'vàng hôm nay', 'thời tiết', 'tin tức'];
 
+// Hàm lọc bỏ ký tự markdown và ký tự đặc biệt
+function cleanMarkdown(text) {
+    let cleaned = text;
+    
+    // Loại bỏ các pattern markdown phổ biến
+    cleaned = cleaned.replace(/\*\*\*(.*?)\*\*\*/g, '$1');  // ***bold italic***
+    cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '$1');     // **bold**
+    cleaned = cleaned.replace(/\*(.*?)\*/g, '$1');         // *italic*
+    cleaned = cleaned.replace(/__(.*?)__/g, '$1');         // __bold__
+    cleaned = cleaned.replace(/_(.*?)_/g, '$1');           // _italic_
+    cleaned = cleaned.replace(/~~(.*?)~~/g, '$1');         // ~~strikethrough~~
+    cleaned = cleaned.replace(/`(.*?)`/g, '$1');           // `code`
+    cleaned = cleaned.replace(/```[\s\S]*?```/g, '');      // code blocks
+    
+    // Loại bỏ hashtag và markdown headers
+    cleaned = cleaned.replace(/^#{1,6}\s+/gm, '');         // # Header
+    
+    // Loại bỏ link markdown [text](url) -> text
+    cleaned = cleaned.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    
+    // Loại bỏ dấu ngoặc kép thừa
+    cleaned = cleaned.replace(/^["']|["']$/g, '');
+    
+    // Nén nhiều khoảng trắng thành 1
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    return cleaned;
+}
+
 // ========== HÀM TRÍCH XUẤT TÊN BÀI HÁT ==========
 function extractSongName(message) {
     let songName = message;
@@ -234,25 +263,27 @@ function addBotMessage(text) {
     copyBtn.onclick = () => copyToClipboard(text, copyBtn);
     
     const replayBtn = document.createElement('button');
-    replayBtn.className = 'copy-btn';
-    replayBtn.innerHTML = '🎤 Phát lại';
-    replayBtn.onclick = async (e) => {
-        const btn = e.target;
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '🔊 Đang đọc...';
-        btn.disabled = true;
-        btn.style.opacity = '0.7';
-        
-        try {
-            await speakText(text);
-        } catch (err) {
-            console.error("Phát lại lỗi:", err);
-        } finally {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-            btn.style.opacity = '1';
-        }
-    };
+replayBtn.className = 'copy-btn';
+replayBtn.innerHTML = '🎤 Phát lại';
+replayBtn.onclick = async (e) => {
+    const btn = e.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '🔊 Đang đọc...';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    
+    try {
+        // 🆕 Dùng text đã lọc markdown để đọc
+        const cleanText = cleanMarkdown(text);
+        await speakText(cleanText);
+    } catch (err) {
+        console.error("Phát lại lỗi:", err);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+    }
+};
     
     const stopBtn = document.createElement('button');
     stopBtn.className = 'copy-btn';
@@ -356,6 +387,10 @@ async function speakText(text) {
     let cleanText = text;
     cleanText = cleanText.replace(/^[📝✅🔄🎤]\s*/, '');
     cleanText = cleanText.replace(/^["']|["']$/g, '');
+    
+    // 🆕 LỌC BỎ KÝ TỰ MARKDOWN (***, ###, **, *)
+    cleanText = cleanMarkdown(cleanText);
+    
     cleanText = cleanText.trim();
     
     if (!cleanText) {
