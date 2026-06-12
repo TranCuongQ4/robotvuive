@@ -445,7 +445,9 @@ function webSpeechFallback(text) {
     };
     
     currentUtterance.onerror = (e) => {
-        console.error("Web Speech error:", e);
+        if (event.error !== 'interrupted') {
+    console.error("Web Speech error:", event.error);
+}
         currentUtterance = null;
         isSpeaking = false;
         stopTalkingAnimation();
