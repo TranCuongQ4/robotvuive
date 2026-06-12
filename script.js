@@ -165,6 +165,9 @@ async function sendMessage() {
                     { 
                         role: 'system', 
                         content: `Bạn là một trợ lý AI thông minh cao cấp, thân thiện, tự nhiên, lịch sự và đa năng.
+						
+						Quan Trọng Khi Nhấn Nút Việt-Anh : 
+						-Phải chuyển giọng đọc là người nước ngoài.
                         
                         BẢN CHẤT CỐT LÕI:
                         - Luôn hoạt động như một người trợ lý toàn diện, hiểu biết sâu rộng nhiều lĩnh vực.
@@ -401,7 +404,7 @@ async function speakText(text) {
     }
 }
 
-// Hàm fallback dùng Web Speech API (giọng có sẵn trên máy)
+// Hàm fallback dùng Web Speech API (chọn giọng theo ngôn ngữ)
 function webSpeechFallback(text) {
     if (currentUtterance) {
         speechSynthesis.cancel();
@@ -411,20 +414,32 @@ function webSpeechFallback(text) {
     const voices = speechSynthesis.getVoices();
     let selectedVoice = null;
     
-    // Ưu tiên giọng Microsoft An (tiếng Việt)
-    selectedVoice = voices.find(voice => 
-        voice.name.toLowerCase() === 'microsoft an' ||
-        (voice.name.toLowerCase().includes('an') && voice.lang === 'vi-VN') ||
-        voice.lang === 'vi-VN'
-    );
+    // Phát hiện ngôn ngữ của văn bản
+    const language = detectLanguage(text);
     
-    // Nếu không có giọng Việt, dùng giọng Anh
-    if (!selectedVoice) {
+    if (language === 'vi') {
+        // TIẾNG VIỆT: ưu tiên Microsoft An
+        selectedVoice = voices.find(voice => 
+            voice.name.toLowerCase() === 'microsoft an' ||
+            (voice.name.toLowerCase().includes('an') && voice.lang === 'vi-VN') ||
+            voice.lang === 'vi-VN'
+        );
+        console.log("🎤 Phát hiện TIẾNG VIỆT, tìm giọng Việt");
+    } else {
+        // TIẾNG ANH: ưu tiên giọng Mỹ/Anh chuẩn
         selectedVoice = voices.find(voice => 
             voice.name.includes('Google UK English Male') ||
             voice.name.includes('Microsoft David') ||
+            voice.name.toLowerCase().includes('david') ||
             voice.lang === 'en-US'
         );
+        console.log("🎤 Phát hiện TIẾNG ANH, tìm giọng Anh/Mỹ");
+    }
+    
+    // Nếu không tìm thấy giọng phù hợp, dùng giọng mặc định
+    if (!selectedVoice) {
+        selectedVoice = voices.find(voice => voice.lang === 'en-US');
+        console.log("🎤 Không tìm thấy giọng ưu tiên, dùng giọng mặc định");
     }
     
     if (selectedVoice) {
@@ -432,7 +447,6 @@ function webSpeechFallback(text) {
         console.log("🎤 Dùng giọng Web Speech:", selectedVoice.name);
     }
     
-    const language = detectLanguage(text);
     currentUtterance.lang = language === 'vi' ? 'vi-VN' : 'en-US';
     currentUtterance.rate = 0.95;
     currentUtterance.pitch = 1.0;
@@ -444,10 +458,10 @@ function webSpeechFallback(text) {
         stopTalkingAnimation();
     };
     
-    currentUtterance.onerror = (e) => {
+    currentUtterance.onerror = (event) => {
         if (event.error !== 'interrupted') {
-    console.error("Web Speech error:", event.error);
-}
+            console.error("Web Speech error:", event.error);
+        }
         currentUtterance = null;
         isSpeaking = false;
         stopTalkingAnimation();
