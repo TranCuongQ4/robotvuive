@@ -400,29 +400,8 @@ body {
     box-shadow: 0 3px 0 #90b8d8;
 }
 
-/* HIỆU ỨNG KHI NÓI */
-.robot-3d.talking .robot-head {
-    animation: float 3s ease-in-out infinite, headShake 0.15s ease-in-out infinite;
-}
-@keyframes headShake {
-    0%, 100% { transform: rotate(0deg); }
-    25% { transform: rotate(2deg); }
-    75% { transform: rotate(-2deg); }
-}
-.robot-3d.talking .left-arm {
-    animation: armTalk 0.15s ease-in-out infinite;
-}
-@keyframes armTalk {
-    0%, 100% { transform: rotate(15deg); }
-    50% { transform: rotate(10deg); }
-}
-.robot-3d.talking .right-arm {
-    animation: armTalkRight 0.15s ease-in-out infinite;
-}
-@keyframes armTalkRight {
-    0%, 100% { transform: rotate(-15deg); }
-    50% { transform: rotate(-10deg); }
-}
+/* HIỆU ỨNG KHI NÓI - ĐÃ BỎ HOÀN TOÀN */
+/* Không còn hiệu ứng rung lắc hay nhép miệng nữa */
 
 /* TIÊU ĐỀ */
 .robot-title {
@@ -575,8 +554,6 @@ body {
 #youtubePlayer { width: 100%; aspect-ratio: 16/9; }
 .webview-frame { width: 100%; height: 320px; border: none; }
 
-
-
 /* ========== NÚT DỊCH THUẬT 3D NỔI ========== */
 .translate-buttons {
     display: flex;
@@ -619,7 +596,6 @@ body {
     top: 4px;
     box-shadow: 0 2px 0 #0d2c40, 0 4px 12px rgba(0,0,0,0.2);
     transform: scale(0.98);
-    /* Hiệu ứng chớp sáng khi nhấn */
     background: linear-gradient(135deg, #3498db, #2980b9);
     transition: all 0.05s ease;
 }
@@ -670,7 +646,6 @@ body {
     }
 }
 
-
 /* ========== LOTTIE ROBOT ========== */
 .lottie-container {
     position: relative;
@@ -680,7 +655,7 @@ body {
     margin: 0 auto;
 }
 
-/* Lớp phủ miệng cho hiệu ứng nhép khi nói (đặt trên lottie) */
+/* Lớp phủ miệng - ĐÃ TẮT HOÀN TOÀN */
 .mouth-effect-lottie {
     position: absolute;
     bottom: 25%;
@@ -688,42 +663,25 @@ body {
     transform: translateX(-50%);
     width: 20%;
     height: 6%;
-    background: rgba(255, 100, 100, 0.6);
+    background: rgba(255, 100, 100, 0);
     border-radius: 50%;
     opacity: 0;
-    transition: all 0.05s ease;
+    transition: none;
     pointer-events: none;
     z-index: 10;
+    display: none;
 }
 
-/* Khi robot nói - hiệu ứng nhép miệng */
+/* Khi robot nói - KHÔNG làm gì cả */
 .robot-3d.talking .mouth-effect-lottie {
-    opacity: 0.8;
-    animation: mouthTalkLottie 0.15s ease-in-out infinite;
+    opacity: 0;
+    animation: none;
+    display: none;
 }
 
-@keyframes mouthTalkLottie {
-    0%, 100% {
-        height: 6%;
-        opacity: 0.7;
-        background: #ff6b6b;
-    }
-    50% {
-        height: 2%;
-        opacity: 0.4;
-        background: #ffa0a0;
-    }
-}
-
-/* Hiệu ứng rung lắc robot khi nói */
+/* Hiệu ứng rung lắc - ĐÃ TẮT HOÀN TOÀN */
 .robot-3d.talking .lottie-container {
-    animation: robotShake 0.2s ease-in-out infinite;
-}
-
-@keyframes robotShake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(2px); }
-    75% { transform: translateX(-2px); }
+    animation: none;
 }
 
 /* Ẩn robot CSS cũ khi dùng Lottie */

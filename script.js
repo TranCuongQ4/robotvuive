@@ -197,6 +197,9 @@ async function sendMessage() {
 						
 						Quan Trọng Khi Nhấn Nút Việt-Anh : 
 						-Phải chuyển giọng đọc là người nước ngoài.
+						
+						Quan Trọng Khi Trả Lời:
+						-Nếu tôi nói hay ghi "tiếp tục trả lời" là bạn phải trả lời tiếp tục nội dung mà bạn đã trả lời ở trên cho liền mạch nội dung nhé.
                         
                         BẢN CHẤT CỐT LÕI:
                         - Luôn hoạt động như một người trợ lý toàn diện, hiểu biết sâu rộng nhiều lĩnh vực.
@@ -512,20 +515,19 @@ function detectLanguage(text) {
     return 'en';
 }
 
-// ========== HOẠT HÌNH ROBOT ==========
+
+
+// ========== HOẠT HÌNH ROBOT (ĐÃ TẮT) ==========
 function startTalkingAnimation() { 
-    const robot3d = document.querySelector('.robot-3d');
-    const mouthEffect = document.querySelector('.mouth-effect-lottie');
-    if (robot3d) robot3d.classList.add('talking');
-    if (mouthEffect) mouthEffect.style.display = 'block';
+    // Không làm gì cả - đã tắt hiệu ứng
 }
 
 function stopTalkingAnimation() { 
-    const robot3d = document.querySelector('.robot-3d');
-    const mouthEffect = document.querySelector('.mouth-effect-lottie');
-    if (robot3d) robot3d.classList.remove('talking');
-    if (mouthEffect) mouthEffect.style.display = 'none';
+    // Không làm gì cả - đã tắt hiệu ứng
 }
+	
+	
+	
 
 // Hiệu ứng nháy mắt
 setInterval(() => {
@@ -612,20 +614,12 @@ window.addEventListener('beforeunload', () => {
     if (currentUtterance) speechSynthesis.cancel();
 });
 
-// ========== DỊCH THUẬT ==========
-function createRecognition(lang) {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        addBotMessage('⚠️ Trình duyệt không hỗ trợ nhận diện giọng nói.');
-        return null;
-    }
-    const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = lang;
-    return recognition;
-}
 
+// ========== DỊCH THUẬT (NHẤN BẮT ĐẦU, NHẤN LẦN NỮA DỪNG VÀ DỊCH) ==========
+
+// ========== DỊCH THUẬT ==========
+
+// Hàm dịch văn bản
 async function translateText(text, sourceLang, targetLang) {
     const prompt = `Dịch đoạn văn sau từ ${sourceLang} sang ${targetLang}. CHỈ trả về bản dịch, không giải thích, không thêm từ nào khác.\n\nVăn bản: "${text}"\n\nBản dịch:`;
     try {
@@ -653,58 +647,75 @@ async function translateText(text, sourceLang, targetLang) {
     }
 }
 
+function createRecognition(lang, onResult) {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        addBotMessage('⚠️ Trình duyệt không hỗ trợ nhận diện giọng nói.');
+        return null;
+    }
+    const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = lang;
+    
+    recognition.onresult = (event) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+                finalTranscript += event.results[i][0].transcript;
+            }
+        }
+        if (finalTranscript) {
+            onResult(finalTranscript.trim());
+        }
+    };
+    
+    recognition.onerror = (event) => {
+        console.error('Recognition error:', event.error);
+        addBotMessage(`❌ Lỗi nhận diện: ${event.error}`);
+    };
+    
+    return recognition;
+}
+
+async function translateAndSpeak(text, sourceLang, targetLang) {
+    addBotMessage(`🔄 Đang dịch ${sourceLang} → ${targetLang}...`);
+    const translated = await translateText(text, sourceLang, targetLang);
+    addBotMessage(`📝 ${translated}`, true);
+    await speakText(translated);
+}
+
 // NÚT 1: ANH → VIỆT
 if (translateEnToViBtn) {
     let currentRecognition = null;
-    let isListening = false;
+    let isRecordingActive = false;
     
-    translateEnToViBtn.addEventListener('mousedown', () => {
-        translateEnToViBtn.classList.add('recording');
-        if (!currentRecognition) {
-            currentRecognition = createRecognition('en-US');
-            if (currentRecognition) {
-                currentRecognition.onresult = async (event) => {
-                    const spokenText = event.results[0][0].transcript;
-                    addBotMessage(`🎤 (Anh) Bạn nói: "${spokenText}"`);
-                    addBotMessage(`🔄 Đang dịch Anh → Việt...`);
-                    const translated = await translateText(spokenText, 'Anh', 'Việt');
-                    addBotMessage(`📝 Dịch: "${translated}"`);
-                    await speakText(translated);
-                };
-                currentRecognition.onerror = (event) => {
-                    console.error('Recognition error:', event.error);
-                    addBotMessage(`❌ Lỗi nhận diện: ${event.error}`);
-                };
-                currentRecognition.onend = () => { isListening = false; };
-            }
-        }
-        if (currentRecognition && !isListening) {
-            try {
-                currentRecognition.start();
-                isListening = true;
-                console.log("🎤 Đang nghe tiếng Anh...");
-            } catch (e) {}
-        }
-    });
-    
-    translateEnToViBtn.addEventListener('mouseup', () => {
-        translateEnToViBtn.classList.remove('recording');
-        if (currentRecognition && isListening) {
-            try {
-                currentRecognition.stop();
-                isListening = false;
-            } catch (e) {}
-        }
-    });
-    
-    translateEnToViBtn.addEventListener('mouseleave', () => {
-        if (translateEnToViBtn.classList.contains('recording')) {
+    translateEnToViBtn.addEventListener('click', async () => {
+        if (isRecordingActive) {
             translateEnToViBtn.classList.remove('recording');
-            if (currentRecognition && isListening) {
-                try {
+            if (currentRecognition) {
+                currentRecognition.stop();
+                currentRecognition = null;
+            }
+            isRecordingActive = false;
+        } else {
+            translateEnToViBtn.classList.add('recording');
+            
+            currentRecognition = createRecognition('en-US', async (spokenText) => {
+                addBotMessage(`🎤 (Anh) Bạn nói: "${spokenText}"`);
+                await translateAndSpeak(spokenText, 'Anh', 'Việt');
+                if (currentRecognition) {
                     currentRecognition.stop();
-                    isListening = false;
-                } catch (e) {}
+                    currentRecognition = null;
+                }
+                translateEnToViBtn.classList.remove('recording');
+                isRecordingActive = false;
+            });
+            
+            if (currentRecognition) {
+                currentRecognition.start();
+                isRecordingActive = true;
+                console.log("🎤 Đang nghe tiếng Anh... Nhấn nút lần nữa để dừng và dịch");
             }
         }
     });
@@ -713,58 +724,39 @@ if (translateEnToViBtn) {
 // NÚT 2: VIỆT → ANH
 if (translateViToEnBtn) {
     let currentRecognition = null;
-    let isListening = false;
+    let isRecordingActive = false;
     
-    translateViToEnBtn.addEventListener('mousedown', () => {
-        translateViToEnBtn.classList.add('recording');
-        if (!currentRecognition) {
-            currentRecognition = createRecognition('vi-VN');
-            if (currentRecognition) {
-                currentRecognition.onresult = async (event) => {
-                    const spokenText = event.results[0][0].transcript;
-                    addBotMessage(`🔄 Đang dịch Việt → Anh...`);
-                    const translated = await translateText(spokenText, 'Việt', 'Anh');
-                    addBotMessage(`📝 ${translated}`);
-                    await speakText(translated);
-                };
-                currentRecognition.onerror = (event) => {
-                    console.error('Recognition error:', event.error);
-                    addBotMessage(`❌ Lỗi nhận diện: ${event.error}`);
-                };
-                currentRecognition.onend = () => { isListening = false; };
-            }
-        }
-        if (currentRecognition && !isListening) {
-            try {
-                currentRecognition.start();
-                isListening = true;
-                console.log("🎤 Đang nghe tiếng Việt...");
-            } catch (e) {}
-        }
-    });
-    
-    translateViToEnBtn.addEventListener('mouseup', () => {
-        translateViToEnBtn.classList.remove('recording');
-        if (currentRecognition && isListening) {
-            try {
-                currentRecognition.stop();
-                isListening = false;
-            } catch (e) {}
-        }
-    });
-    
-    translateViToEnBtn.addEventListener('mouseleave', () => {
-        if (translateViToEnBtn.classList.contains('recording')) {
+    translateViToEnBtn.addEventListener('click', async () => {
+        if (isRecordingActive) {
             translateViToEnBtn.classList.remove('recording');
-            if (currentRecognition && isListening) {
-                try {
+            if (currentRecognition) {
+                currentRecognition.stop();
+                currentRecognition = null;
+            }
+            isRecordingActive = false;
+        } else {
+            translateViToEnBtn.classList.add('recording');
+            
+            currentRecognition = createRecognition('vi-VN', async (spokenText) => {
+                await translateAndSpeak(spokenText, 'Việt', 'Anh');
+                if (currentRecognition) {
                     currentRecognition.stop();
-                    isListening = false;
-                } catch (e) {}
+                    currentRecognition = null;
+                }
+                translateViToEnBtn.classList.remove('recording');
+                isRecordingActive = false;
+            });
+            
+            if (currentRecognition) {
+                currentRecognition.start();
+                isRecordingActive = true;
+                console.log("🎤 Đang nghe tiếng Việt... Nhấn nút lần nữa để dừng và dịch");
             }
         }
     });
 }
+
+
 
 // ========== LOADING TRÊN ROBOT ==========
 let loadingOverlay = null;
