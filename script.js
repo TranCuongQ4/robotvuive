@@ -375,7 +375,7 @@ async function copyToClipboard(text, btn) {
 
 // ========== TEXT TO SPEECH ==========
 
-// ========== TEXT TO SPEECH VỚI FALLBACK ==========
+// ========== TEXT TO SPEECH VỚI FALLBACK (GIỌNG NAM) ==========
 
 async function speakText(text) {
     // Dừng audio đang phát
@@ -414,7 +414,8 @@ async function speakText(text) {
     try {
         const { EdgeTTS } = await import('@edge-tts/universal');
         const language = detectLanguage(cleanText);
-        let voice = language === 'vi' ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
+        // ✅ ĐÃ SỬA: Giọng NAM cho cả tiếng Việt và tiếng Anh
+        let voice = language === 'vi' ? 'vi-VN-NamMinhNeural' : 'en-US-GuyNeural';
         
         const tts = new EdgeTTS(cleanText, voice);
         const result = await tts.synthesize();
@@ -443,7 +444,7 @@ async function speakText(text) {
     }
 }
 
-// Hàm fallback dùng Web Speech API (chọn giọng theo ngôn ngữ)
+// Hàm fallback dùng Web Speech API (GIỌNG NAM)
 function webSpeechFallback(text) {
     if (currentUtterance) {
         speechSynthesis.cancel();
@@ -457,38 +458,54 @@ function webSpeechFallback(text) {
     const language = detectLanguage(text);
     
     if (language === 'vi') {
-        // TIẾNG VIỆT: ưu tiên Microsoft An
+        // ✅ ĐÃ SỬA: TIẾNG VIỆT - Ưu tiên giọng NAM
         selectedVoice = voices.find(voice => 
-            voice.name.toLowerCase() === 'microsoft an' ||
-            (voice.name.toLowerCase().includes('an') && voice.lang === 'vi-VN') ||
-            voice.lang === 'vi-VN'
+            voice.name.toLowerCase() === 'microsoft nam' ||
+            voice.name.toLowerCase().includes('nam') ||
+            (voice.name.toLowerCase().includes('minh') && voice.lang === 'vi-VN') ||
+            (voice.name.toLowerCase().includes('đức') && voice.lang === 'vi-VN')
         );
-        console.log("🎤 Phát hiện TIẾNG VIỆT, tìm giọng Việt");
+        // Nếu không tìm thấy giọng nam, thử tìm bất kỳ giọng nam nào
+        if (!selectedVoice) {
+            selectedVoice = voices.find(voice => 
+                voice.lang === 'vi-VN' && 
+                (voice.name.toLowerCase().includes('nam') || 
+                 voice.name.toLowerCase().includes('minh') ||
+                 voice.name.toLowerCase().includes('đức'))
+            );
+        }
+        console.log("🎤 Phát hiện TIẾNG VIỆT, tìm giọng NAM");
     } else {
-        // TIẾNG ANH: ưu tiên giọng Mỹ/Anh chuẩn
+        // ✅ ĐÃ SỬA: TIẾNG ANH - Ưu tiên giọng NAM (David, Guy, Google UK English Male)
         selectedVoice = voices.find(voice => 
             voice.name.includes('Google UK English Male') ||
             voice.name.includes('Microsoft David') ||
             voice.name.toLowerCase().includes('david') ||
-            voice.lang === 'en-US'
+            voice.name.toLowerCase().includes('guy') ||
+            (voice.lang === 'en-US' && voice.name.toLowerCase().includes('male'))
         );
-        console.log("🎤 Phát hiện TIẾNG ANH, tìm giọng Anh/Mỹ");
+        console.log("🎤 Phát hiện TIẾNG ANH, tìm giọng NAM");
     }
     
-    // Nếu không tìm thấy giọng phù hợp, dùng giọng mặc định
+    // Nếu không tìm thấy giọng nam phù hợp, thử tìm giọng mặc định (vẫn ưu tiên nam)
     if (!selectedVoice) {
-        selectedVoice = voices.find(voice => voice.lang === 'en-US');
-        console.log("🎤 Không tìm thấy giọng ưu tiên, dùng giọng mặc định");
+        selectedVoice = voices.find(voice => 
+            voice.lang === 'en-US' && voice.name.toLowerCase().includes('male')
+        );
+        if (!selectedVoice) {
+            selectedVoice = voices.find(voice => voice.lang === 'en-US');
+        }
+        console.log("🎤 Không tìm thấy giọng nam ưu tiên, dùng giọng mặc định");
     }
     
     if (selectedVoice) {
         currentUtterance.voice = selectedVoice;
-        console.log("🎤 Dùng giọng Web Speech:", selectedVoice.name);
+        console.log("🎤 Dùng giọng Web Speech (NAM):", selectedVoice.name);
     }
     
     currentUtterance.lang = language === 'vi' ? 'vi-VN' : 'en-US';
     currentUtterance.rate = 0.95;
-    currentUtterance.pitch = 1.0;
+    currentUtterance.pitch = 1.0;  // Giữ pitch ở mức trung tính để giọng nam tự nhiên
     currentUtterance.volume = 1;
     
     currentUtterance.onend = () => {
