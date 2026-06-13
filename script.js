@@ -199,7 +199,7 @@ async function sendMessage() {
 						-Phải chuyển giọng đọc là người nước ngoài.
 						
 						Quan Trọng Khi Trả Lời:
-						-Nếu tôi nói hay ghi "tiếp tục trả lời" là bạn phải trả lời tiếp tục nội dung mà bạn đã trả lời ở trên cho liền mạch nội dung nhé.
+						-Nếu tôi nói hay ghi tiếp tục trả lời là bạn phải trả lời tiếp tục nội dung mà bạn đã trả lời ở trên cho liền mạch nội dung nhé.
                         
                         BẢN CHẤT CỐT LÕI:
                         - Luôn hoạt động như một người trợ lý toàn diện, hiểu biết sâu rộng nhiều lĩnh vực.
@@ -702,7 +702,7 @@ if (translateEnToViBtn) {
             translateEnToViBtn.classList.add('recording');
             
             currentRecognition = createRecognition('en-US', async (spokenText) => {
-                addBotMessage(`🎤 (Anh) Bạn nói: "${spokenText}"`);
+                addBotMessage(`🎤 : "${spokenText}"`);
                 await translateAndSpeak(spokenText, 'Anh', 'Việt');
                 if (currentRecognition) {
                     currentRecognition.stop();
@@ -738,7 +738,8 @@ if (translateViToEnBtn) {
             translateViToEnBtn.classList.add('recording');
             
             currentRecognition = createRecognition('vi-VN', async (spokenText) => {
-                await translateAndSpeak(spokenText, 'Việt', 'Anh');
+                addBotMessage(`🎤 Tôi: "${spokenText}"`);
+				await translateAndSpeak(spokenText, 'Việt', 'Anh');
                 if (currentRecognition) {
                     currentRecognition.stop();
                     currentRecognition = null;
