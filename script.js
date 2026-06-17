@@ -406,6 +406,8 @@ function closeWebview() {
 async function sendMessage() {
     const message = chatInput.value.trim();
     if (!message) return;
+	
+	const lowerMsg = message.toLowerCase();
     
     chatInput.value = '';
     startTalkingAnimation();
