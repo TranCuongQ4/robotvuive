@@ -1,6 +1,267 @@
+// ========== CẤU HÌNH TÌM KIẾM ==========
+const WORKER_URL = 'https://solitary-glitter-6b93robotvuive.tranmanhcuonghappy.workers.dev';
+
+// ========== ĐẾM SỐ LẦN TÌM KIẾM ==========
+// Lưu vào localStorage để nhớ số lần đã dùng
+function getSearchCount() {
+    const today = new Date().toDateString();
+    const saved = localStorage.getItem('searchCount');
+    if (saved) {
+        const data = JSON.parse(saved);
+        if (data.date === today) {
+            return data.count;
+        }
+    }
+    return 0;
+}
+
+function incrementSearchCount() {
+    const today = new Date().toDateString();
+    const count = getSearchCount() + 1;
+    localStorage.setItem('searchCount', JSON.stringify({ date: today, count: count }));
+    return count;
+}
+
+// Giới hạn số lần tìm kiếm miễn phí (SerpAPI 250/tháng → khoảng 8/ngày)
+const SEARCH_LIMIT = 8; // Có thể điều chỉnh
+
+// ========== HÀM TÌM KIẾM QUA WORKER ==========
+async function searchGoogle(query) {
+    try {
+        const response = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                action: 'search',
+                query: query
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error('Search API error:', data.error);
+            return await searchWikipedia(query);
+        }
+        
+        if (data.organic_results && data.organic_results.length > 0) {
+            const result = data.organic_results[0];
+            return {
+                title: result.title || 'Không có tiêu đề',
+                snippet: result.snippet || 'Không có mô tả',
+                link: result.link || '#'
+            };
+        }
+        return null;
+    } catch (error) {
+        console.error('Search error:', error);
+        return await searchWikipedia(query);
+    }
+}
+
+// ========== FALLBACK: WIKIPEDIA ==========
+async function searchWikipedia(query) {
+    try {
+        const url = `https://vi.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.extract) {
+            return {
+                title: data.title || 'Wikipedia',
+                snippet: data.extract.substring(0, 300),
+                link: data.content_urls?.desktop?.page || '#'
+            };
+        }
+        return null;
+    } catch (error) {
+        console.error('Wikipedia error:', error);
+        return null;
+    }
+}
+
+// ========== HÀM LẤY GIÁ VÀNG ==========
+async function getGoldPrice() {
+    try {
+        const response = await fetch('https://api.thingspeak.com/channels/2155837/feeds.json?results=1');
+        const data = await response.json();
+        
+        if (data.feeds && data.feeds.length > 0) {
+            return {
+                price: data.feeds[0].field1 || 'Chưa có dữ liệu',
+                time: data.feeds[0].created_at
+            };
+        }
+        return null;
+    } catch (error) {
+        console.error('Gold price error:', error);
+        return null;
+    }
+}
+
+// ========== HÀM LẤY GIÁ XĂNG ==========
+async function getGasPrice() {
+    try {
+        const response = await fetch('https://api.thingspeak.com/channels/2155837/feeds.json?results=1');
+        const data = await response.json();
+        
+        if (data.feeds && data.feeds.length > 0) {
+            return {
+                price: data.feeds[0].field2 || 'Chưa có dữ liệu'
+            };
+        }
+        return null;
+    } catch (error) {
+        console.error('Gas price error:', error);
+        return null;
+    }
+}
+
+
+// ========== MỞ TAB MỚI GOOGLE ==========
+function openWebSearch(query, searchType = 'google') {
+    let searchUrl;
+    if (searchType === 'giavang') {
+        searchUrl = `https://www.google.com/search?q=${encodeURIComponent('giá vàng hôm nay ' + query)}`;
+    } else if (searchType === 'giaxang') {
+        searchUrl = `https://www.google.com/search?q=${encodeURIComponent('giá xăng dầu hôm nay ' + query)}`;
+    } else if (searchType === 'radio') {
+        searchUrl = `https://www.google.com/search?q=${encodeURIComponent('nghe radio online ' + query)}`;
+    } else {
+        searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    }
+    window.open(searchUrl, '_blank');
+    if (webviewContainer) webviewContainer.style.display = 'none';
+}
+
+// ========== XỬ LÝ LỆNH (GỘP 2 HÀM) ==========
+async function processCommand(message) {
+    const lowerMsg = message.toLowerCase();
+    
+    // 1. XỬ LÝ NHẠC
+    if (MUSIC_KEYWORDS.some(kw => lowerMsg.includes(kw))) {
+        const songName = extractSongName(message);
+        await playYouTube(songName);
+        return true;
+    }
+    
+    // 2. XỬ LÝ DỪNG NHẠC
+    if (STOP_KEYWORDS.some(kw => lowerMsg.includes(kw))) {
+        addBotMessage('🎵 Bạn có thể tắt tab YouTube đang mở để dừng nhạc nhé!');
+        return true;
+    }
+    
+    // 3. ✅ XỬ LÝ RADIO - MỞ TAB MỚI
+    if (lowerMsg.includes('radio') || lowerMsg.includes('nghe đài')) {
+        addBotMessage(`📻 Đang mở tìm kiếm radio cho bạn...`);
+        openWebSearch(message, 'radio');
+        return true;
+    }
+    
+    // 4. XỬ LÝ GIÁ VÀNG
+    if (lowerMsg.includes('giá vàng') || lowerMsg.includes('vàng hôm nay')) {
+        // Thử lấy từ API giá vàng trước
+        const result = await getGoldPrice();
+        if (result) {
+            const reply = `💰 Giá vàng hôm nay: ${result.price} VND/chỉ`;
+            addBotMessage(reply);
+            speakText(reply);
+            return true;
+        }
+        
+        // Nếu API lỗi, kiểm tra số lần tìm kiếm
+        const count = getSearchCount();
+        if (count >= SEARCH_LIMIT) {
+            // Hết lượt → mở tab mới
+            addBotMessage(`🔍 Đã hết lượt tìm kiếm trong ngày (${SEARCH_LIMIT}/${SEARCH_LIMIT}). Mở Google cho bạn...`);
+            openWebSearch(message, 'giavang');
+            return true;
+        }
+        
+        // Còn lượt → tìm kiếm và đọc
+        addBotMessage('💰 Không lấy được giá vàng. Đang tìm kiếm trên Google...');
+        incrementSearchCount();
+        const searchResult = await searchGoogle('giá vàng hôm nay');
+        if (searchResult) {
+            addBotMessage(`📌 ${searchResult.snippet}`);
+            speakText(searchResult.snippet);
+        } else {
+            addBotMessage('❌ Không tìm thấy thông tin. Mở Google cho bạn...');
+            openWebSearch(message, 'giavang');
+        }
+        return true;
+    }
+    
+    // 5. XỬ LÝ GIÁ XĂNG
+    if (lowerMsg.includes('giá xăng') || lowerMsg.includes('xăng hôm nay') || lowerMsg.includes('giá dầu')) {
+        const result = await getGasPrice();
+        if (result) {
+            const reply = `⛽ Giá xăng hôm nay: ${result.price} VND/lít`;
+            addBotMessage(reply);
+            speakText(reply);
+            return true;
+        }
+        
+        const count = getSearchCount();
+        if (count >= SEARCH_LIMIT) {
+            addBotMessage(`🔍 Đã hết lượt tìm kiếm trong ngày (${SEARCH_LIMIT}/${SEARCH_LIMIT}). Mở Google cho bạn...`);
+            openWebSearch(message, 'giaxang');
+            return true;
+        }
+        
+        addBotMessage('⛽ Không lấy được giá xăng. Đang tìm kiếm trên Google...');
+        incrementSearchCount();
+        const searchResult = await searchGoogle('giá xăng hôm nay');
+        if (searchResult) {
+            addBotMessage(`📌 ${searchResult.snippet}`);
+            speakText(searchResult.snippet);
+        } else {
+            addBotMessage('❌ Không tìm thấy thông tin. Mở Google cho bạn...');
+            openWebSearch(message, 'giaxang');
+        }
+        return true;
+    }
+    
+    // 6. AUTO-SEARCH: TỰ ĐỘNG TÌM KIẾM KHI KHÔNG BIẾT
+    if (lowerMsg.includes('?') || 
+        lowerMsg.includes('là gì') || 
+        lowerMsg.includes('ai là') ||
+        lowerMsg.includes('tin tức') ||
+        lowerMsg.includes('thời tiết')) {
+        
+        const count = getSearchCount();
+        if (count >= SEARCH_LIMIT) {
+            addBotMessage(`🔍 Đã hết lượt tìm kiếm trong ngày (${SEARCH_LIMIT}/${SEARCH_LIMIT}). Mở Google cho bạn...`);
+            openWebSearch(message);
+            return true;
+        }
+        
+        addBotMessage(`🔍 Đang tìm kiếm "${message}"...`);
+        incrementSearchCount();
+        const result = await searchGoogle(message);
+        if (result) {
+            const reply = `📌 ${result.snippet}`;
+            addBotMessage(reply);
+            speakText(result.snippet);
+        } else {
+            const reply = '❌ Không tìm thấy thông tin. Mở Google cho bạn...';
+            addBotMessage(reply);
+            openWebSearch(message);
+        }
+        return true;
+    }
+    
+    return false;
+}
+
+
 // Configuration
 const API_URL = 'https://solitary-glitter-6b93robotvuive.tranmanhcuonghappy.workers.dev';
-const MODEL = 'gpt-oss-120b';
+const MODEL = 'qwen/qwen3-32b';
+
+
 
 // DOM elements
 const chatInput = document.getElementById('chatInput');
@@ -123,6 +384,8 @@ function openWebSearch(query, searchType = 'google') {
         searchUrl = `https://www.google.com/search?q=${encodeURIComponent('giá vàng hôm nay ' + query)}`;
     } else if (searchType === 'giaxang') {
         searchUrl = `https://www.google.com/search?q=${encodeURIComponent('giá xăng dầu hôm nay ' + query)}`;
+	} else if (searchType === 'radio') {
+        searchUrl = `https://www.google.com/search?q=${encodeURIComponent('nghe radio ' + query)}`;	
     } else {
         searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
     }
@@ -137,33 +400,7 @@ function closeWebview() {
     }
 }
 
-// ========== XỬ LÝ LỆNH ==========
-async function processCommand(message) {
-    const lowerMsg = message.toLowerCase();
-    
-    if (MUSIC_KEYWORDS.some(kw => lowerMsg.includes(kw))) {
-        const songName = extractSongName(message);
-        await playYouTube(songName);
-        return true;
-    }
-    
-    if (STOP_KEYWORDS.some(kw => lowerMsg.includes(kw))) {
-        addBotMessage('🎵 Bạn có thể tắt tab YouTube đang mở để dừng nhạc nhé!');
-        return true;
-    }
-    
-    for (const pattern of SEARCH_KEYWORDS) {
-        if (lowerMsg.includes(pattern)) {
-            let searchType = 'google';
-            if (lowerMsg.includes('giá xăng')) searchType = 'giaxang';
-            if (lowerMsg.includes('giá vàng')) searchType = 'giavang';
-            addBotMessage(`🔍 Đang mở trình duyệt tìm kiếm "${pattern}" cho bạn...`);
-            openWebSearch(message, searchType);
-            return true;
-        }
-    }
-    return false;
-}
+
 
 // ========== GỬI TIN NHẮN LÊN WORKER ==========
 async function sendMessage() {
@@ -173,6 +410,7 @@ async function sendMessage() {
     chatInput.value = '';
     startTalkingAnimation();
     
+    // Kiểm tra lệnh đặc biệt (nhạc, giá vàng, thời tiết...)
     const isCommand = await processCommand(message);
     if (isCommand) {
         stopTalkingAnimation();
@@ -183,6 +421,23 @@ async function sendMessage() {
     const loadingId = addLoadingMessage();
     
     try {
+        // ✅ XÁC ĐỊNH max_tokens DỰA TRÊN ĐỘ DÀI CÂU HỎI
+        let maxTokens = 2048; // Mặc định
+        
+        // Nếu câu hỏi dài hoặc yêu cầu viết bài
+        if (message.length > 100 || 
+            lowerMsg.includes('bài văn') || 
+            lowerMsg.includes('viết') || 
+            lowerMsg.includes('kể về') || 
+            lowerMsg.includes('tả về')) {
+            maxTokens = 4096; // Bài viết dài
+        }
+        
+        // Nếu câu hỏi ngắn, hỏi nhanh
+        if (message.length < 30 && !message.includes('?')) {
+            maxTokens = 500; // Trả lời ngắn
+        }
+        
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
@@ -193,40 +448,50 @@ async function sendMessage() {
                 messages: [
                     { 
                         role: 'system', 
-                        content: `Bạn là một trợ lý AI thông minh cao cấp, thân thiện, tự nhiên, lịch sự và đa năng,trả lời chính xác đúng sự thật.
-						
-						Quan Trọng Khi Nhấn Nút Việt-Anh : 
-						-Phải chuyển giọng đọc là người nước ngoài.
-						
-						Quan Trọng Khi Trả Lời:
-						-Nếu tôi nói hay ghi tiếp tục trả lời là bạn phải trả lời tiếp tục nội dung mà bạn đã trả lời ở trên cho liền mạch nội dung nhé.
+                        content: `Bạn là một trợ lý AI thông minh, thân thiện, vui vẻ, người Việt Nam.
+
+                        ⚠️ QUY TẮC CỰC KỲ QUAN TRỌNG:
+                        1. CHỈ trả lời bằng TIẾNG VIỆT (trừ khi được yêu cầu cụ thể)
+                        2. KHÔNG được dùng thẻ <think> hay bất kỳ thẻ XML/HTML nào
+                        3. KHÔNG được giải thích cách suy nghĩ
+                        4. KHÔNG được dịch câu hỏi của người dùng
+                        5. Trả lời trực tiếp, tự nhiên, đúng trọng tâm
+                        6. KHÔNG được nói về bản thân là AI hay model
                         
-                        BẢN CHẤT CỐT LÕI:
-                        - Luôn hoạt động như một người trợ lý toàn diện, hiểu biết sâu rộng nhiều lĩnh vực.
-                        - Có khả năng trò chuyện tự nhiên như con người thật.
-                        - Ưu tiên giúp đỡ người dùng bằng mọi khả năng tốt nhất.
-                        - Luôn giữ thái độ tích cực, điềm tĩnh, lễ phép và tôn trọng người dùng.
+                        BẢN CHẤT CỦA BẠN:
+                        - Là một người bạn đồng hành thông minh, hiểu biết
+                        - Luôn trả lời chi tiết, dễ hiểu, đầy đủ
+                        - Giúp đỡ người dùng bằng kiến thức của mình
+                        - Thái độ tích cực, thân thiện, lịch sự
                         
-                        QUY TẮC QUAN TRỌNG NHẤT:
-                        - Khi người dùng hỏi bằng tiếng Anh: Hãy dịch câu hỏi đó sang tiếng Việt. Chỉ trả lời bằng tiếng Việt.
-                        - Tuyệt đối không nhắc lại câu hỏi tiếng Anh trong câu trả lời.
-                        
-                        CÁC QUY TẮC KHÁC:
-                        - Nếu hỏi giá xăng, giá vàng, thời tiết: nói bạn không có dữ liệu thực time, gợi ý tra Google.
-                        - Nếu yêu cầu mở nhạc: nói "Tôi sẽ mở nhạc [tên bài] cho bạn!"
-                        - Khi người dùng hỏi bằng tiếng việt trên 50% thì bạn nói hoàn toàn tiếng việt không pha tiếng anh.
-						- Không đọc các kí tự \ / * nhiều viết liền nhau làm rối loạn người nghe.` 
+                        LƯU Ý QUAN TRỌNG NHẤT:
+                        - Nếu người dùng hỏi bằng tiếng Việt → TRẢ LỜI BẰNG TIẾNG VIỆT
+                        - Nếu người dùng hỏi bằng tiếng Anh → CÓ THỂ trả lời bằng tiếng Anh
+                        - KHÔNG TỰ ĐỘNG DỊCH CÂU HỎI CỦA NGƯỜI DÙNG` 
                     },
                     { role: 'user', content: message }
                 ],
-                max_tokens: 500,
+                max_tokens: maxTokens,  // ✅ Cân chỉnh động
                 temperature: 0.7
             })
         });
         
-        if (!response.ok) throw new Error(`API error ${response.status}`);
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`API error ${response.status}: ${errorData}`);
+        }
+        
         const data = await response.json();
-        const botReply = data.choices[0].message.content;
+        
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            throw new Error('Invalid response format from API');
+        }
+        
+        let botReply = data.choices[0].message.content;
+        
+        // ✅ Xóa thẻ <think> nếu có
+        botReply = botReply.replace(/<think>[\s\S]*?<\/think>/g, '');
+        botReply = botReply.trim();
         
         removeLoadingMessage(loadingId);
         addBotMessage(botReply);
@@ -243,7 +508,8 @@ async function sendMessage() {
     setTimeout(() => stopTalkingAnimation(), 500);
 }
 
-// ========== HIỂN THỊ TIN NHẮN ==========
+// ========== HIỂN THỊ TIN NHẮN - CẢI TIẾN ==========
+
 function addBotMessage(text) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'bot-message';
@@ -254,6 +520,23 @@ function addBotMessage(text) {
     const messageText = document.createElement('div');
     messageText.className = 'message-text';
     messageText.textContent = text;
+    
+    // ✅ Lấy phần dịch để phát lại (nếu có)
+    let textToSpeak = text;
+    // Nếu có dòng "📝" thì lấy phần sau nó
+    if (text.includes('📝')) {
+        const parts = text.split('📝');
+        if (parts.length > 1) {
+            textToSpeak = parts[1].trim();
+        }
+    }
+    // Nếu có dòng "🎤" và "📝" thì lấy phần dịch
+    if (text.includes('🎤') && text.includes('📝')) {
+        const match = text.match(/📝\s*(.+)/);
+        if (match) {
+            textToSpeak = match[1].trim();
+        }
+    }
     
     const buttonContainer = document.createElement('div');
     buttonContainer.style.display = 'flex';
@@ -267,27 +550,27 @@ function addBotMessage(text) {
     copyBtn.onclick = () => copyToClipboard(text, copyBtn);
     
     const replayBtn = document.createElement('button');
-replayBtn.className = 'copy-btn';
-replayBtn.innerHTML = '🎤 Phát lại';
-replayBtn.onclick = async (e) => {
-    const btn = e.target;
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '🔊 Đang đọc...';
-    btn.disabled = true;
-    btn.style.opacity = '0.7';
-    
-    try {
-        // 🆕 Dùng text đã lọc markdown để đọc
-        const cleanText = cleanMarkdown(text);
-        await speakText(cleanText);
-    } catch (err) {
-        console.error("Phát lại lỗi:", err);
-    } finally {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-        btn.style.opacity = '1';
-    }
-};
+    replayBtn.className = 'copy-btn';
+    replayBtn.innerHTML = '🎤 Phát lại';
+    replayBtn.onclick = async (e) => {
+        const btn = e.target;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '🔊 Đang đọc...';
+        btn.disabled = true;
+        btn.style.opacity = '0.7';
+        
+        try {
+            // ✅ PHÁT LẠI: Chỉ đọc phần dịch
+            const cleanText = cleanMarkdown(textToSpeak);
+            await speakText(cleanText);
+        } catch (err) {
+            console.error("Phát lại lỗi:", err);
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+    };
     
     const stopBtn = document.createElement('button');
     stopBtn.className = 'copy-btn';
@@ -374,9 +657,6 @@ async function copyToClipboard(text, btn) {
 }
 
 // ========== TEXT TO SPEECH ==========
-
-// ========== TEXT TO SPEECH VỚI FALLBACK (GIỌNG NAM) ==========
-
 async function speakText(text) {
     // Dừng audio đang phát
     if (currentAudio) {
@@ -387,14 +667,11 @@ async function speakText(text) {
     isSpeaking = true;
     startTalkingAnimation();
     
-    // Làm sạch text (loại bỏ icon, khoảng trắng thừa)
+    // Làm sạch text
     let cleanText = text;
     cleanText = cleanText.replace(/^[📝✅🔄🎤]\s*/, '');
     cleanText = cleanText.replace(/^["']|["']$/g, '');
-    
-    // 🆕 LỌC BỎ KÝ TỰ MARKDOWN (***, ###, **, *)
     cleanText = cleanMarkdown(cleanText);
-    
     cleanText = cleanText.trim();
     
     if (!cleanText) {
@@ -402,7 +679,7 @@ async function speakText(text) {
         return;
     }
     
-    // Thử dùng Web Speech API trước (ổn định hơn)
+    // Thử dùng Web Speech API trước
     try {
         await webSpeechFallback(cleanText);
         return;
@@ -414,7 +691,6 @@ async function speakText(text) {
     try {
         const { EdgeTTS } = await import('@edge-tts/universal');
         const language = detectLanguage(cleanText);
-        // ✅ ĐÃ SỬA: Giọng NAM cho cả tiếng Việt và tiếng Anh
         let voice = language === 'vi' ? 'vi-VN-NamMinhNeural' : 'en-US-GuyNeural';
         
         const tts = new EdgeTTS(cleanText, voice);
@@ -454,18 +730,15 @@ function webSpeechFallback(text) {
     const voices = speechSynthesis.getVoices();
     let selectedVoice = null;
     
-    // Phát hiện ngôn ngữ của văn bản
     const language = detectLanguage(text);
     
     if (language === 'vi') {
-        // ✅ ĐÃ SỬA: TIẾNG VIỆT - Ưu tiên giọng NAM
         selectedVoice = voices.find(voice => 
             voice.name.toLowerCase() === 'microsoft nam' ||
             voice.name.toLowerCase().includes('nam') ||
             (voice.name.toLowerCase().includes('minh') && voice.lang === 'vi-VN') ||
             (voice.name.toLowerCase().includes('đức') && voice.lang === 'vi-VN')
         );
-        // Nếu không tìm thấy giọng nam, thử tìm bất kỳ giọng nam nào
         if (!selectedVoice) {
             selectedVoice = voices.find(voice => 
                 voice.lang === 'vi-VN' && 
@@ -476,7 +749,6 @@ function webSpeechFallback(text) {
         }
         console.log("🎤 Phát hiện TIẾNG VIỆT, tìm giọng NAM");
     } else {
-        // ✅ ĐÃ SỬA: TIẾNG ANH - Ưu tiên giọng NAM (David, Guy, Google UK English Male)
         selectedVoice = voices.find(voice => 
             voice.name.includes('Google UK English Male') ||
             voice.name.includes('Microsoft David') ||
@@ -487,7 +759,6 @@ function webSpeechFallback(text) {
         console.log("🎤 Phát hiện TIẾNG ANH, tìm giọng NAM");
     }
     
-    // Nếu không tìm thấy giọng nam phù hợp, thử tìm giọng mặc định (vẫn ưu tiên nam)
     if (!selectedVoice) {
         selectedVoice = voices.find(voice => 
             voice.lang === 'en-US' && voice.name.toLowerCase().includes('male')
@@ -505,7 +776,7 @@ function webSpeechFallback(text) {
     
     currentUtterance.lang = language === 'vi' ? 'vi-VN' : 'en-US';
     currentUtterance.rate = 0.95;
-    currentUtterance.pitch = 1.0;  // Giữ pitch ở mức trung tính để giọng nam tự nhiên
+    currentUtterance.pitch = 1.0;
     currentUtterance.volume = 1;
     
     currentUtterance.onend = () => {
@@ -532,8 +803,6 @@ function detectLanguage(text) {
     return 'en';
 }
 
-
-
 // ========== HOẠT HÌNH ROBOT (ĐÃ TẮT) ==========
 function startTalkingAnimation() { 
     // Không làm gì cả - đã tắt hiệu ứng
@@ -542,9 +811,6 @@ function startTalkingAnimation() {
 function stopTalkingAnimation() { 
     // Không làm gì cả - đã tắt hiệu ứng
 }
-	
-	
-	
 
 // Hiệu ứng nháy mắt
 setInterval(() => {
@@ -609,36 +875,58 @@ if ('webkitSpeechRecognition' in window) {
     const SpeechRecognition = window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
     recognition.lang = 'vi-VN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    
     recognition.onresult = (event) => {
-        chatInput.value = event.results[0][0].transcript;
-        sendMessage();
+        if (event.results[0] && event.results[0][0]) {
+            chatInput.value = event.results[0][0].transcript;
+            sendMessage();
+            stopRecording();
+        }
+    };
+    
+    recognition.onerror = (event) => {
+        console.error('Recognition error:', event.error);
+        if (event.error === 'network') {
+            addBotMessage('⚠️ Lỗi kết nối mạng. Kiểm tra internet và thử lại.');
+        } else if (event.error === 'not-allowed') {
+            addBotMessage('⚠️ Cần cấp quyền truy cập micro.');
+        }
         stopRecording();
     };
-    recognition.onerror = () => stopRecording();
+    
     recognition.onend = () => stopRecording();
 }
 
-micBtn.addEventListener('click', () => {
+micBtn.addEventListener('click', async () => {
     if (!recognition) {
         addBotMessage('Trình duyệt không hỗ trợ micro.');
         return;
     }
-    if (isRecording) stopRecording();
-    else startRecording();
+    
+    if (isRecording) {
+        stopRecording();
+        return;
+    }
+    
+    // Kiểm tra quyền micro
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+        startRecording();
+    } catch(err) {
+        addBotMessage('⚠️ Không thể truy cập micro. Vui lòng cấp quyền và thử lại.');
+    }
 });
 
 window.addEventListener('beforeunload', () => {
     if (currentUtterance) speechSynthesis.cancel();
 });
 
+// ========== DỊCH THUẬT - CHỈ DỊCH, KHÔNG GIẢNG ==========
 
-// ========== DỊCH THUẬT (NHẤN BẮT ĐẦU, NHẤN LẦN NỮA DỪNG VÀ DỊCH) ==========
-
-// ========== DỊCH THUẬT ==========
-
-// Hàm dịch văn bản
 async function translateText(text, sourceLang, targetLang) {
-    const prompt = `Dịch đoạn văn sau từ ${sourceLang} sang ${targetLang}. CHỈ trả về bản dịch, không giải thích, không thêm từ nào khác.\n\nVăn bản: "${text}"\n\nBản dịch:`;
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -646,18 +934,57 @@ async function translateText(text, sourceLang, targetLang) {
             body: JSON.stringify({
                 model: MODEL,
                 messages: [
-                    { role: 'system', content: `Bạn là công cụ dịch thuật chuyên nghiệp. Nhiệm vụ: dịch chính xác văn bản người dùng cung cấp từ ${sourceLang} sang ${targetLang}. CHỈ trả về bản dịch.` },
-                    { role: 'user', content: prompt }
+                    { 
+                        role: 'system', 
+                        content: `Bạn là công cụ dịch thuật chuyên nghiệp.
+                        
+                        QUY TẮC CỰC KỲ QUAN TRỌNG:
+                        1. CHỈ trả về bản dịch DUY NHẤT
+                        2. KHÔNG được thêm bất kỳ từ nào khác
+                        3. KHÔNG được giải thích
+                        4. KHÔNG được suy nghĩ hay phân tích
+                        5. KHÔNG được dùng thẻ <think>
+                        6. KHÔNG được dùng dấu ngoặc kép
+                        7. KHÔNG được viết "Bản dịch:" hay "Translation:"
+                        
+                        Ví dụ:
+                        Input: "Tôi muốn du lịch ở Singapore"
+                        Output: I want to travel in Singapore
+                        
+                        Input: "Hello, how are you?"
+                        Output: Xin chào, bạn khỏe không?`
+                    },
+                    { 
+                        role: 'user', 
+                        content: `Dịch chính xác câu sau từ ${sourceLang} sang ${targetLang}. CHỈ trả về bản dịch, KHÔNG gì khác:
+
+${text}` 
+                    }
                 ],
-                max_tokens: 500,
-                temperature: 0.3
+                max_tokens: 300,
+                temperature: 0.1,
+                top_p: 0.9
             })
         });
-        if (!response.ok) throw new Error(`API error ${response.status}`);
+        
+        if (!response.ok) {
+            throw new Error(`API error ${response.status}`);
+        }
+        
         const data = await response.json();
         let translated = data.choices[0].message.content;
+        
+        // Loại bỏ thẻ <think>
+        translated = translated.replace(/<think>[\s\S]*?<\/think>/g, '');
+        // Loại bỏ dấu ngoặc kép
         translated = translated.replace(/^["']|["']$/g, '');
-        return translated.trim();
+        // Loại bỏ "Bản dịch:" nếu có
+        translated = translated.replace(/^(Bản dịch:|Translation:)\s*/i, '');
+        // Loại bỏ xuống dòng thừa
+        translated = translated.trim();
+        
+        return translated;
+        
     } catch (error) {
         console.error('Translation error:', error);
         return `[Lỗi dịch: ${error.message}]`;
@@ -669,13 +996,33 @@ function createRecognition(lang, onResult) {
         addBotMessage('⚠️ Trình duyệt không hỗ trợ nhận diện giọng nói.');
         return null;
     }
+    
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     const recognition = new SpeechRecognition();
-    recognition.continuous = true;
+    recognition.continuous = false; // Sửa thành false để dễ kiểm soát
     recognition.interimResults = false;
     recognition.lang = lang;
+    recognition.maxAlternatives = 1;
+    
+    let timeoutId = null;
+    
+    recognition.onstart = () => {
+        console.log('🎤 Bắt đầu nghe...');
+        timeoutId = setTimeout(() => {
+            try {
+                recognition.stop();
+                console.log('⏰ Timeout - dừng nghe');
+                addBotMessage('⏰ Không nghe thấy giọng nói. Thử lại nhé!');
+            } catch(e) {}
+        }, 15000);
+    };
     
     recognition.onresult = (event) => {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
@@ -689,17 +1036,54 @@ function createRecognition(lang, onResult) {
     
     recognition.onerror = (event) => {
         console.error('Recognition error:', event.error);
-        addBotMessage(`❌ Lỗi nhận diện: ${event.error}`);
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        
+        if (event.error === 'network') {
+            addBotMessage('⚠️ Lỗi kết nối mạng. Kiểm tra internet và thử lại.');
+        } else if (event.error === 'not-allowed') {
+            addBotMessage('⚠️ Cần cấp quyền truy cập micro.');
+        } else if (event.error === 'no-speech') {
+            // Không thông báo lỗi này
+        } else {
+            addBotMessage(`❌ Lỗi nhận diện: ${event.error}`);
+        }
+    };
+    
+    recognition.onend = () => {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        document.querySelectorAll('.recording').forEach(el => {
+            el.classList.remove('recording');
+        });
     };
     
     return recognition;
 }
 
+// ========== DỊCH THUẬT - CHỈ ĐỌC BẢN DỊCH ==========
+
 async function translateAndSpeak(text, sourceLang, targetLang) {
-    addBotMessage(`🔄 Đang dịch ${sourceLang} → ${targetLang}...`);
-    const translated = await translateText(text, sourceLang, targetLang);
-    addBotMessage(`📝 ${translated}`, true);
-    await speakText(translated);
+    try {
+        // Bắt đầu dịch
+        addBotMessage(`🔄 Đang dịch...`);
+        const translated = await translateText(text, sourceLang, targetLang);
+        
+        // ✅ HIỂN THỊ: hiển thị cả gốc và dịch
+        const displayText = `🎤 "${text}"\n📝 ${translated}`;
+        addBotMessage(displayText);
+        
+        // ✅ ĐỌC: CHỈ đọc bản dịch, không đọc gốc
+        await speakText(translated);
+        
+    } catch (error) {
+        console.error('Translate error:', error);
+        addBotMessage(`❌ Lỗi dịch: ${error.message}`);
+    }
 }
 
 // NÚT 1: ANH → VIỆT
@@ -711,28 +1095,48 @@ if (translateEnToViBtn) {
         if (isRecordingActive) {
             translateEnToViBtn.classList.remove('recording');
             if (currentRecognition) {
-                currentRecognition.stop();
+                try {
+                    currentRecognition.stop();
+                } catch(e) {}
                 currentRecognition = null;
             }
             isRecordingActive = false;
-        } else {
-            translateEnToViBtn.classList.add('recording');
             
-            currentRecognition = createRecognition('en-US', async (spokenText) => {
-                addBotMessage(`🎤 : "${spokenText}"`);
-                await translateAndSpeak(spokenText, 'Anh', 'Việt');
-                if (currentRecognition) {
-                    currentRecognition.stop();
-                    currentRecognition = null;
-                }
-                translateEnToViBtn.classList.remove('recording');
-                isRecordingActive = false;
-            });
-            
+            return;
+        }
+        
+        // Kiểm tra quyền micro
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => track.stop());
+        } catch(err) {
+            addBotMessage('⚠️ Không thể truy cập micro. Vui lòng cấp quyền và thử lại.');
+            return;
+        }
+        
+        translateEnToViBtn.classList.add('recording');
+        
+        currentRecognition = createRecognition('en-US', async (spokenText) => {
+            addBotMessage(`🎤 : "${spokenText}"`);
+            await translateAndSpeak(spokenText, 'Anh', 'Việt');
             if (currentRecognition) {
+                try {
+                    currentRecognition.stop();
+                } catch(e) {}
+                currentRecognition = null;
+            }
+            translateEnToViBtn.classList.remove('recording');
+            isRecordingActive = false;
+        });
+        
+        if (currentRecognition) {
+            try {
                 currentRecognition.start();
                 isRecordingActive = true;
-                console.log("🎤 Đang nghe tiếng Anh... Nhấn nút lần nữa để dừng và dịch");
+                addBotMessage('🎤 Đang nghe tiếng Anh... Nói vào micro nhé!');
+            } catch(err) {
+                addBotMessage('❌ Không thể khởi động micro. Vui lòng thử lại.');
+                translateEnToViBtn.classList.remove('recording');
             }
         }
     });
@@ -747,34 +1151,52 @@ if (translateViToEnBtn) {
         if (isRecordingActive) {
             translateViToEnBtn.classList.remove('recording');
             if (currentRecognition) {
-                currentRecognition.stop();
+                try {
+                    currentRecognition.stop();
+                } catch(e) {}
                 currentRecognition = null;
             }
             isRecordingActive = false;
-        } else {
-            translateViToEnBtn.classList.add('recording');
             
-            currentRecognition = createRecognition('vi-VN', async (spokenText) => {
-                addBotMessage(`🎤 Tôi: "${spokenText}"`);
-				await translateAndSpeak(spokenText, 'Việt', 'Anh');
-                if (currentRecognition) {
-                    currentRecognition.stop();
-                    currentRecognition = null;
-                }
-                translateViToEnBtn.classList.remove('recording');
-                isRecordingActive = false;
-            });
-            
+            return;
+        }
+        
+        // Kiểm tra quyền micro
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => track.stop());
+        } catch(err) {
+            addBotMessage('⚠️ Không thể truy cập micro. Vui lòng cấp quyền và thử lại.');
+            return;
+        }
+        
+        translateViToEnBtn.classList.add('recording');
+        
+        currentRecognition = createRecognition('vi-VN', async (spokenText) => {
+            addBotMessage(`🎤 : "${spokenText}"`);
+            await translateAndSpeak(spokenText, 'Việt', 'Anh');
             if (currentRecognition) {
+                try {
+                    currentRecognition.stop();
+                } catch(e) {}
+                currentRecognition = null;
+            }
+            translateViToEnBtn.classList.remove('recording');
+            isRecordingActive = false;
+        });
+        
+        if (currentRecognition) {
+            try {
                 currentRecognition.start();
                 isRecordingActive = true;
-                console.log("🎤 Đang nghe tiếng Việt... Nhấn nút lần nữa để dừng và dịch");
+                addBotMessage('🎤 Đang nghe tiếng Việt... Nói vào micro nhé!');
+            } catch(err) {
+                addBotMessage('❌ Không thể khởi động micro. Vui lòng thử lại.');
+                translateViToEnBtn.classList.remove('recording');
             }
         }
     });
 }
-
-
 
 // ========== LOADING TRÊN ROBOT ==========
 let loadingOverlay = null;
