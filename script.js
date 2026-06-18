@@ -23,7 +23,7 @@ function incrementSearchCount() {
 }
 
 // Giới hạn số lần tìm kiếm miễn phí (SerpAPI 250/tháng → khoảng 8/ngày)
-const SEARCH_LIMIT = 8; // Có thể điều chỉnh
+const SEARCH_LIMIT = 5; // Có thể điều chỉnh
 
 // ========== HÀM TÌM KIẾM QUA WORKER ==========
 async function searchGoogle(query) {
@@ -136,6 +136,40 @@ function openWebSearch(query, searchType = 'google') {
     if (webviewContainer) webviewContainer.style.display = 'none';
 }
 
+// ========== KIỂM TRA CÂU TRẢ LỜI KHÔNG CHẮC CHẮN ==========
+function isUncertainAnswer(text) {
+    const badPatterns = [
+        "tôi không chắc",
+        "có thể",
+        "theo tôi biết",
+        "dường như",
+        "tôi nghĩ",
+        "có lẽ",
+        "không rõ",
+        "chưa chắc",
+        "hình như",
+        "tôi đoán"
+    ];
+    const lower = text.toLowerCase();
+    return badPatterns.some(p => lower.includes(p));
+}
+
+// ========== AUTO-SEARCH PATTERNS (KHÔNG CẦN GỬI AI) ==========
+const AUTO_SEARCH_PATTERNS = [
+    "ai là",
+    "ở đâu",
+    "giá bao nhiêu",
+    "tin tức",
+    "thời tiết",
+    "hôm nay",
+    "mới nhất",
+    "là gì",
+    "bao nhiêu",
+    "khi nào",
+    "tại sao",
+    "như thế nào"
+];
+
 // ========== XỬ LÝ LỆNH (GỘP 2 HÀM) ==========
 async function processCommand(message) {
     const lowerMsg = message.toLowerCase();
@@ -224,11 +258,24 @@ async function processCommand(message) {
         return true;
     }
     
-    // 6. AUTO-SEARCH: TỰ ĐỘNG TÌM KIẾM KHI KHÔNG BIẾT
+    // 6. 🚨 AUTO-SEARCH: TỰ ĐỘNG TÌM KIẾM KHI CÓ TỪ KHÓA ĐẶC BIỆT (Cách 3)
+    if (AUTO_SEARCH_PATTERNS.some(p => lowerMsg.includes(p))) {
+        const reply = "🔍 Vấn đề này tôi sẽ tìm cho bạn ngay.";
+        addBotMessage(reply);
+        speakText(reply);
+        
+        // Chờ robot nói xong rồi mở Google
+        setTimeout(() => {
+            openWebSearch(message);
+        }, 2500);
+        return true;
+    }
+    
+    // 7. AUTO-SEARCH: TỰ ĐỘNG TÌM KIẾM KHI CÓ DẤU HỎI
     if (lowerMsg.includes('?') || 
         lowerMsg.includes('là gì') || 
         lowerMsg.includes('ai là') ||
-        lowerMsg.includes('tin tức') ||
+        lowerMsg.includes('tin tức') ||		
         lowerMsg.includes('thời tiết')) {
         
         const count = getSearchCount();
@@ -310,7 +357,7 @@ let isSpeaking = false;
 // ========== DANH SÁCH TỪ KHÓA ==========
 const MUSIC_KEYWORDS = ['mở nhạc', 'play', 'bật nhạc', 'nghe bài', 'cho tôi nghe', 'mở bài', 'phát nhạc', 'nghe nhạc'];
 const STOP_KEYWORDS = ['tắt nhạc', 'dừng nhạc', 'stop music'];
-const SEARCH_KEYWORDS = ['giá xăng', 'xăng hôm nay', 'giá dầu', 'giá vàng', 'vàng hôm nay', 'thời tiết', 'tin tức'];
+const SEARCH_KEYWORDS = ['giá xăng', 'xăng hôm nay', 'giá dầu', 'giá vàng', 'vàng hôm nay', 'thời tiết', 'tin tức','radio','tìm','đọc thơ','bài thơ','bài văn','đọc văn'];
 
 // Hàm lọc bỏ ký tự markdown và ký tự đặc biệt
 function cleanMarkdown(text) {
@@ -378,20 +425,7 @@ function closePlayer() { youtubeContainer.style.display = 'none'; }
 function openYouTubeSearch(songName) { playYouTube(songName); }
 
 // ========== MỞ TAB MỚI GOOGLE ==========
-function openWebSearch(query, searchType = 'google') {
-    let searchUrl;
-    if (searchType === 'giavang') {
-        searchUrl = `https://www.google.com/search?q=${encodeURIComponent('giá vàng hôm nay ' + query)}`;
-    } else if (searchType === 'giaxang') {
-        searchUrl = `https://www.google.com/search?q=${encodeURIComponent('giá xăng dầu hôm nay ' + query)}`;
-	} else if (searchType === 'radio') {
-        searchUrl = `https://www.google.com/search?q=${encodeURIComponent('nghe radio ' + query)}`;	
-    } else {
-        searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-    }
-    window.open(searchUrl, '_blank');
-    if (webviewContainer) webviewContainer.style.display = 'none';
-}
+// ĐÃ XÓA function openWebSearch TRÙNG LẶP - CHỈ GIỮ LẠI MỘT Ở TRÊN
 
 function closeWebview() {
     const webviewContainer = document.getElementById('webviewContainer');
@@ -439,7 +473,9 @@ async function sendMessage() {
         if (message.length < 30 && !message.includes('?')) {
             maxTokens = 500; // Trả lời ngắn
         }
-        
+		
+		
+        const isVietnamese = detectVietnamese(message);
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
@@ -450,31 +486,83 @@ async function sendMessage() {
                 messages: [
                     { 
                         role: 'system', 
-                        content: `Bạn là một trợ lý AI thông minh, thân thiện, vui vẻ, người Việt Nam.
+                        content: `Bạn là trợ lý AI người Việt.
 
-                        ⚠️ QUY TẮC CỰC KỲ QUAN TRỌNG:
-                        1. CHỈ trả lời bằng TIẾNG VIỆT (trừ khi được yêu cầu cụ thể)
-                        2. KHÔNG được dùng thẻ <think> hay bất kỳ thẻ XML/HTML nào
-                        3. KHÔNG được giải thích cách suy nghĩ
-                        4. KHÔNG được dịch câu hỏi của người dùng
-                        5. Trả lời trực tiếp, tự nhiên, đúng trọng tâm
-                        6. KHÔNG được nói về bản thân là AI hay model
-                        
-                        BẢN CHẤT CỦA BẠN:
-                        - Là một người bạn đồng hành thông minh, hiểu biết
-                        - Luôn trả lời chi tiết, dễ hiểu, đầy đủ
-                        - Giúp đỡ người dùng bằng kiến thức của mình
-                        - Thái độ tích cực, thân thiện, lịch sự
-                        
-                        LƯU Ý QUAN TRỌNG NHẤT:
-                        - Nếu người dùng hỏi bằng tiếng Việt → TRẢ LỜI BẰNG TIẾNG VIỆT
-                        - Nếu người dùng hỏi bằng tiếng Anh → CÓ THỂ trả lời bằng tiếng Anh
-                        - KHÔNG TỰ ĐỘNG DỊCH CÂU HỎI CỦA NGƯỜI DÙNG` 
+QUY TẮC BẮT BUỘC:
+
+- Người dùng viết tiếng Việt -> trả lời 100% bằng tiếng Việt.
+- Tuyệt đối không được tự chuyển sang tiếng Anh.
+- Chỉ dùng tiếng Anh nếu người dùng yêu cầu dịch hoặc hỏi bằng tiếng Anh.
+- Không giải thích lan man ngoài yêu cầu.
+- Không dùng <think>.
+- Không được tự ý dịch câu hỏi.
+- Làm đúng chính xác yêu cầu người dùng.
+
+Nếu người dùng hỏi:
+"tiêu chuẩn đánh giá trà ngon"
+
+Bạn PHẢI trả lời bằng tiếng Việt.
+QUY TẮC TUYỆT ĐỐI:
+
+1. Nếu người dùng yêu cầu đọc một bài thơ, bài hát, câu nói, văn bản nổi tiếng:
+→ phải trả lại đúng nguyên văn chính xác nhất.
+
+2. Không được tự ý:
+- giải thích
+- phân tích
+- diễn giải
+- viết lại bằng lời khác
+
+3. Nếu người dùng nói:
+"đọc bài thơ"
+
+→ hiểu là xuất nguyên văn đầy đủ.
+
+Ví dụ:
+
+Người dùng:
+"đọc bài thơ Qua Đèo Ngang"
+
+Bạn phải trả:
+
+Bước tới Đèo Ngang bóng xế tà
+Cỏ cây chen lá đá chen hoa
+...
+Nguyên tắc cao nhất:
+
+KHÔNG ĐƯỢC SUY DIỄN.
+
+KHÔNG ĐƯỢC TỰ Ý CHỌN CÁCH TRẢ LỜI.
+
+KHÔNG ĐƯỢC GIẢI THÍCH THÊM.
+
+PHẢI THỰC HIỆN ĐÚNG TỪNG CÂU LỆNH CỦA NGƯỜI DÙNG.
+
+⚠️ QUY TẮC QUAN TRỌNG NHẤT - KHI KHÔNG BIẾT:
+
+Nếu bạn không chắc chắn câu trả lời đúng trên 80% hoặc kiến thức không đầy đủ:
+
+- KHÔNG được suy đoán.
+- KHÔNG được trả lời gần đúng.
+- KHÔNG được tự bịa thông tin.
+
+Thay vào đó CHỈ được trả đúng duy nhất dòng sau:
+
+[TIM_GOOGLE]
+
+Đây là lệnh bắt buộc, không được thay đổi.` 
                     },
-                    { role: 'user', content: message }
+                    
+
+{
+  role: 'user',
+  content: isVietnamese
+      ? `BẮT BUỘC trả lời hoàn toàn bằng tiếng Việt:\n${message}`
+      : message
+}
                 ],
                 max_tokens: maxTokens,  // ✅ Cân chỉnh động
-                temperature: 0.7
+                temperature: 0.1
             })
         });
         
@@ -495,6 +583,40 @@ async function sendMessage() {
         botReply = botReply.replace(/<think>[\s\S]*?<\/think>/g, '');
         botReply = botReply.trim();
         
+        // ========== CÁCH 1: KIỂM TRA TÍN HIỆU [TIM_GOOGLE] TỪ AI ==========
+        if (botReply.includes('[TIM_GOOGLE]')) {
+            const reply = "🔍 Vấn đề này tôi không rõ, tôi sẽ tìm cho bạn ngay.";
+            removeLoadingMessage(loadingId);
+            addBotMessage(reply);
+            speakText(reply);
+            
+            // Chờ robot nói xong rồi mở Google
+            setTimeout(() => {
+                openWebSearch(message);
+            }, 2500);
+            
+            hideLoadingOnRobot();
+            stopTalkingAnimation();
+            return;
+        }
+        
+        // ========== CÁCH 2: KIỂM TRA CÂU TRẢ LỜI NGHI NGỜ ==========
+        if (isUncertainAnswer(botReply)) {
+            const reply = "🔍 Vấn đề này tôi không rõ, tôi sẽ tìm cho bạn ngay.";
+            removeLoadingMessage(loadingId);
+            addBotMessage(reply);
+            speakText(reply);
+            
+            // Chờ robot nói xong rồi mở Google
+            setTimeout(() => {
+                openWebSearch(message);
+            }, 2500);
+            
+            hideLoadingOnRobot();
+            stopTalkingAnimation();
+            return;
+        }
+        
         removeLoadingMessage(loadingId);
         addBotMessage(botReply);
         speakText(botReply);
@@ -508,6 +630,11 @@ async function sendMessage() {
     }
     
     setTimeout(() => stopTalkingAnimation(), 500);
+}
+
+function detectVietnamese(text) {
+  const regex = /[àáạảãăâđêôơưèéìíòóùúỳý]/i;
+  return regex.test(text);
 }
 
 // ========== HIỂN THỊ TIN NHẮN - CẢI TIẾN ==========
